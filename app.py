@@ -5,10 +5,10 @@ import os
 app = Flask(__name__)
 
 UA = "Mozilla/5.0 (QtEmbedded; Linux) MAG250 stbapp ver:2 Safari/533.3"
-PORTAL_URL = "http://tv.maxx4k.cc/stalker_portal/server/load.php"
-MAC = "00:1A:79:17:1E:AA"
-SN = "797995C29B984"
-DID = "797995c29b984c9b0f4cd869c93cd610"
+PORTAL_URL = "http://alex.rocktv.be/stalker_portal/server/load.php"
+MAC = "00:1A:79:00:32:98"
+SN = "83233A72E758C"
+DID = "90E56ECA468542FD462BE326BF8EC28A9710CF0287AEF5C3D4070E8F0B65A4F2"
 
 @app.route('/')
 def home():
