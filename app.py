@@ -4,14 +4,17 @@ import os
 
 app = Flask(__name__)
 
-# சாதன விவரங்கள்
 UA = "Mozilla/5.0 (QtEmbedded; Linux) MAG250 stbapp ver:2 Safari/533.3"
 PORTAL_URL = "http://tv.maxx4k.cc/stalker_portal/server/load.php"
 MAC = "00:1A:79:17:1E:AA"
 SN = "797995C29B984"
 DID = "797995c29b984c9b0f4cd869c93cd610"
 
-def get_authorized_session():
+@app.route('/')
+def home():
+    return "MSC Proxy Server is Active. Use /play?ch=NAME"
+
+def get_auth_session():
     s = requests.Session()
     s.headers.update({
         "User-Agent": UA,
@@ -20,29 +23,27 @@ def get_authorized_session():
     })
     try:
         # Handshake
-        res = s.get(f"{PORTAL_URL}?type=stb&action=handshake&JsHttpRequest=1-xml", timeout=10)
-        token = res.json().get('js', {}).get('token')
-        if not token: return None
+        h_res = s.get(f"{PORTAL_URL}?type=stb&action=handshake&JsHttpRequest=1-xml", timeout=10)
+        h_data = h_res.json()
+        token = h_data.get('js', {}).get('token')
         
-        s.headers.update({"Authorization": f"Bearer {token}"})
-        # Get Profile
-        s.get(f"{PORTAL_URL}?type=stb&action=get_profile&stb_type=MAG250&sn={SN}&device_id={DID}&device_id2={DID}&JsHttpRequest=1-xml", timeout=10)
-        return s, token
-    except:
-        return None, None
+        if not token: return None, "Handshake failed - No Token"
 
-@app.route('/')
-def home():
-    return "MSC Portal Proxy is Running! Use: /play?ch=ChannelName"
+        s.headers.update({"Authorization": f"Bearer {token}"})
+        # Profile Authorization
+        p_res = s.get(f"{PORTAL_URL}?type=stb&action=get_profile&stb_type=MAG250&sn={SN}&device_id={DID}&device_id2={DID}&JsHttpRequest=1-xml", timeout=10)
+        
+        return s, token
+    except Exception as e:
+        return None, str(e)
 
 @app.route('/play')
 def play():
     ch_name = request.args.get('ch')
     if not ch_name: return "Channel name missing", 400
 
-    auth = get_authorized_session()
-    if not auth: return "Login Failed - Check MAC/IP Block", 403
-    session, token = auth
+    session, error = get_auth_session()
+    if not session: return f"Login Failed: {error}", 403
 
     try:
         # Fetch Channels
@@ -52,16 +53,16 @@ def play():
         target = next((c for c in channels if ch_name.upper() in c['name'].upper()), None)
         if not target: return "Channel Not Found", 404
 
-        # Get Stream Link
+        # Create Link
         cmd = target['cmds'][0]['url']
         l_res = session.get(f"{PORTAL_URL}?type=itv&action=create_link&cmd={cmd}&JsHttpRequest=1-xml")
         raw_url = l_res.json().get('js', {}).get('cmd', "").split(" ")[-1]
 
-        # Proxy Streaming (இதன் மூலம் IP Block தவிர்க்கப்படும்)
+        # Video Proxying
         req = requests.get(raw_url, headers={"User-Agent": UA}, stream=True, timeout=15)
         return Response(stream_with_context(req.iter_content(chunk_size=1024*512)), content_type=req.headers.get('Content-Type'))
     except Exception as e:
-        return f"Error: {str(e)}", 500
+        return f"Streaming Error: {str(e)}", 500
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8080))
