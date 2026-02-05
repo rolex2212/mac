@@ -4,17 +4,14 @@ import os
 
 app = Flask(__name__)
 
+# சாதன விவரங்கள்
 UA = "Mozilla/5.0 (QtEmbedded; Linux) MAG250 stbapp ver:2 Safari/533.3"
 PORTAL_URL = "http://tv.maxx4k.cc/stalker_portal/server/load.php"
 MAC = "00:1A:79:17:1E:AA"
 SN = "797995C29B984"
 DID = "797995c29b984c9b0f4cd869c93cd610"
 
-@app.route('/')
-def home():
-    return "MSC Proxy Server is Active. Use /play?ch=NAME"
-
-def get_auth_session():
+def get_auth():
     s = requests.Session()
     s.headers.update({
         "User-Agent": UA,
@@ -22,31 +19,33 @@ def get_auth_session():
         "Referer": "http://tv.maxx4k.cc/stalker_portal/c/"
     })
     try:
-        # Handshake
-        h_res = s.get(f"{PORTAL_URL}?type=stb&action=handshake&JsHttpRequest=1-xml", timeout=10)
-        h_data = h_res.json()
-        token = h_data.get('js', {}).get('token')
+        # Handshake - இங்க்தான் 403 எர்ரர் வர வாய்ப்புள்ளது
+        res = s.get(f"{PORTAL_URL}?type=stb&action=handshake&JsHttpRequest=1-xml", timeout=10)
+        data = res.json()
+        token = data.get('js', {}).get('token')
+        if not token: return None, "No Token Found"
         
-        if not token: return None, "Handshake failed - No Token"
-
         s.headers.update({"Authorization": f"Bearer {token}"})
-        # Profile Authorization
-        p_res = s.get(f"{PORTAL_URL}?type=stb&action=get_profile&stb_type=MAG250&sn={SN}&device_id={DID}&device_id2={DID}&JsHttpRequest=1-xml", timeout=10)
-        
+        # Profile Auth
+        s.get(f"{PORTAL_URL}?type=stb&action=get_profile&stb_type=MAG250&sn={SN}&device_id={DID}&device_id2={DID}&JsHttpRequest=1-xml", timeout=10)
         return s, token
     except Exception as e:
         return None, str(e)
 
+@app.route('/')
+def home():
+    return "MSC Proxy Server Running. Use /play?ch=NAME"
+
 @app.route('/play')
 def play():
     ch_name = request.args.get('ch')
-    if not ch_name: return "Channel name missing", 400
+    if not ch_name: return "Channel Name Required", 400
 
-    session, error = get_auth_session()
-    if not session: return f"Login Failed: {error}", 403
+    session, error_msg = get_auth()
+    if not session: return f"Login Failed: {error_msg}", 403
 
     try:
-        # Fetch Channels
+        # Get Channels
         r = session.get(f"{PORTAL_URL}?type=itv&action=get_all_channels&JsHttpRequest=1-xml")
         channels = r.json().get('js', {}).get('data', [])
         
@@ -58,9 +57,9 @@ def play():
         l_res = session.get(f"{PORTAL_URL}?type=itv&action=create_link&cmd={cmd}&JsHttpRequest=1-xml")
         raw_url = l_res.json().get('js', {}).get('cmd', "").split(" ")[-1]
 
-        # Video Proxying
-        req = requests.get(raw_url, headers={"User-Agent": UA}, stream=True, timeout=15)
-        return Response(stream_with_context(req.iter_content(chunk_size=1024*512)), content_type=req.headers.get('Content-Type'))
+        # Video Streaming
+        v_res = requests.get(raw_url, headers={"User-Agent": UA}, stream=True, timeout=20)
+        return Response(stream_with_context(v_res.iter_content(chunk_size=1024*512)), content_type=v_res.headers.get('Content-Type'))
     except Exception as e:
         return f"Streaming Error: {str(e)}", 500
 
